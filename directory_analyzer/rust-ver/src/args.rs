@@ -17,12 +17,16 @@ pub struct Args {
     file_info: bool,
 
     ///Follow symlinks as if they were a normal object
-    #[arg(short, long, default_value_t = false)]
+    #[arg(short = 's', long, default_value_t = false)]
     follow_symlinks: bool,
 
     ///Print each object as it is found
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
+
+    ///Export info to a xlsx file
+    #[arg(short, long)]
+    export_xlsx: Option<PathBuf>,
 }
 
 impl Args {
@@ -32,6 +36,7 @@ impl Args {
         file_info: bool,
         follow_symlinks: bool,
         verbose: bool,
+        export_xlsx: Option<PathBuf>,
     ) -> Self {
         Self {
             path_to_analyze,
@@ -39,6 +44,7 @@ impl Args {
             file_info,
             follow_symlinks,
             verbose,
+            export_xlsx,
         }
     }
 
@@ -65,5 +71,9 @@ impl Args {
     ///Print each object as it is found
     pub fn verbose(&self) -> bool {
         self.verbose
+    }
+
+    pub fn export_xlsx(&self) -> Option<&PathBuf> {
+        self.export_xlsx.as_ref()
     }
 }

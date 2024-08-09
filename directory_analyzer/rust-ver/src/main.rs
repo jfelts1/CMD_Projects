@@ -1,10 +1,11 @@
 use clap::Parser;
-use dira::{analyze, Args};
+use dira::{analyze, output, Args};
 
 fn main() {
     let args = Args::parse();
-    let output = analyze(&args);
-    match output {
+    let analyzed_info = analyze(&args);
+    let out = output(&args, analyzed_info);
+    match out {
         Ok(out) => println!("{out}"),
         Err(e) => eprintln!("{e}"),
     }

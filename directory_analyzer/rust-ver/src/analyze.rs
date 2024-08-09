@@ -6,8 +6,9 @@ use std::{
 
 use crate::{Args, FileExtension};
 use anyhow::Result;
+use serde::Serialize;
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct AnalyzedInfo {
     ///Count of directories found during the analysis
     found_dirs: u32,
@@ -29,9 +30,7 @@ impl std::fmt::Display for AnalyzedInfo {
             Some(info) => {
                 let mut out = String::new();
                 for (file_ext, ft_info) in info {
-                    out.push_str(&format!(
-                        "\nFile extension:{file_ext}{ft_info}"
-                    ));
+                    out.push_str(&format!("\nFile extension:{file_ext}{ft_info}"));
                 }
                 out
             }
@@ -64,7 +63,7 @@ impl AnalyzedInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FileTypeInfo {
     num_files: u32,
     largest_file: FileTypeInfoRecords,
@@ -84,7 +83,7 @@ impl std::fmt::Display for FileTypeInfo {
 }
 
 ///This is for holding info about specific notable files
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct FileTypeInfoRecords {
     ///Path to the path
     path: PathBuf,
@@ -103,7 +102,7 @@ impl std::fmt::Display for FileTypeInfoRecords {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Copy, Serialize)]
 pub struct SymlinkInfo {
     found_symlinks: u32,
     ///Number of symlinks that point to files
@@ -174,12 +173,25 @@ impl FileTypeInfo {
     pub fn num_files(&self) -> u32 {
         self.num_files
     }
+    
+    pub fn largest_file(&self) -> &FileTypeInfoRecords {
+        &self.largest_file
+    }
+    
+    pub fn smallest_file(&self) -> &FileTypeInfoRecords {
+        &self.smallest_file
+    }
 }
 
 pub fn analyze(args: &Args) -> Result<AnalyzedInfo> {
     let mut out = set_up_anaylzed_info(args);
     search_dir(args, &mut out)?;
-
+    if args.follow_symlinks() {
+        debug_assert_eq!(
+            out.found_symlinks.unwrap().found_symlinks,
+            out.found_symlinks.unwrap().dir_symlinks + out.found_symlinks.unwrap().file_symlinks
+        );
+    }
     Ok(out)
 }
 
@@ -329,6 +341,7 @@ mod tests {
             false,
             false,
             false,
+            None,
         );
         let res = analyze(&test_args).unwrap();
         let expected = AnalyzedInfo {
@@ -348,6 +361,7 @@ mod tests {
             false,
             false,
             false,
+            None,
         );
         let res = analyze(&test_args).unwrap();
         let expected = AnalyzedInfo {
@@ -367,6 +381,7 @@ mod tests {
             true,
             false,
             false,
+            None,
         );
         let res = analyze(&test_args).unwrap();
         let mut hash_map: HashMap<FileExtension, FileTypeInfo> = HashMap::new();
@@ -458,6 +473,7 @@ mod tests {
             false,
             true,
             false,
+            None,
         );
         let res = analyze(&test_args).unwrap();
         let expected = AnalyzedInfo {
