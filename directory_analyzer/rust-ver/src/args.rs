@@ -27,6 +27,10 @@ pub struct Args {
     ///Export info to a xlsx file
     #[arg(short, long)]
     export_xlsx: Option<PathBuf>,
+
+    ///When displaying paths should they be printed in full
+    #[arg(short, long, default_value_t = false)]
+    full_path: bool,
 }
 
 impl Args {
@@ -37,6 +41,7 @@ impl Args {
         follow_symlinks: bool,
         verbose: bool,
         export_xlsx: Option<PathBuf>,
+        full_path: bool,
     ) -> Self {
         Self {
             path_to_analyze,
@@ -45,6 +50,7 @@ impl Args {
             follow_symlinks,
             verbose,
             export_xlsx,
+            full_path,
         }
     }
 
@@ -75,5 +81,10 @@ impl Args {
 
     pub fn export_xlsx(&self) -> Option<&PathBuf> {
         self.export_xlsx.as_ref()
+    }
+
+    ///When displaying paths should they be printed in full
+    pub fn full_path(&self) -> bool {
+        self.full_path
     }
 }

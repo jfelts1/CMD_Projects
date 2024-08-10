@@ -63,7 +63,7 @@ impl AnalyzedInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize,Default)]
 pub struct FileTypeInfo {
     num_files: u32,
     largest_file: FileTypeInfoRecords,
@@ -148,7 +148,7 @@ impl FileTypeInfoRecords {
 
     ///Path to the path
     pub fn path(&self) -> &Path {
-        &self.path.as_path()
+        self.path.as_path()
     }
     ///The size of the file
     pub fn size(&self) -> u64 {
@@ -173,11 +173,11 @@ impl FileTypeInfo {
     pub fn num_files(&self) -> u32 {
         self.num_files
     }
-    
+
     pub fn largest_file(&self) -> &FileTypeInfoRecords {
         &self.largest_file
     }
-    
+
     pub fn smallest_file(&self) -> &FileTypeInfoRecords {
         &self.smallest_file
     }
@@ -187,6 +187,7 @@ pub fn analyze(args: &Args) -> Result<AnalyzedInfo> {
     let mut out = set_up_anaylzed_info(args);
     search_dir(args, &mut out)?;
     if args.follow_symlinks() {
+        //Sanity check to make sure things add up
         debug_assert_eq!(
             out.found_symlinks.unwrap().found_symlinks,
             out.found_symlinks.unwrap().dir_symlinks + out.found_symlinks.unwrap().file_symlinks
@@ -253,10 +254,14 @@ fn search_dir(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
             dirs_to_analyze.push(entry.path());
         }
         if args.verbose() {
-            println!(
-                "dir: {}",
-                entry.path().canonicalize().unwrap().to_string_lossy()
-            );
+            if args.full_path() {
+                println!(
+                    "dir: {}",
+                    entry.path().canonicalize().unwrap().to_string_lossy()
+                );
+            } else {
+                println!("dir: {}", entry.path().to_string_lossy());
+            }
         }
         analyed_info.found_dirs += 1;
     }
@@ -268,22 +273,26 @@ fn search_dir(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
         metadata: &fs::Metadata,
     ) {
         if args.verbose() {
-            println!(
-                "file: {}",
-                entry.path().canonicalize().unwrap().to_string_lossy()
-            );
+            if args.full_path() {
+                println!(
+                    "file: {}",
+                    entry.path().canonicalize().unwrap().to_string_lossy()
+                )
+            } else {
+                println!("file: {}", entry.path().to_string_lossy())
+            }
         }
         analyed_info.found_files += 1;
         if let Some(map) = &mut analyed_info.file_info {
             match entry.path().extension() {
                 Some(ext) => {
                     let ext = ext.to_os_string().to_string_lossy().to_string();
-                    add_file_info_to_map(ext, map, entry, metadata);
+                    add_file_info_to_map(args, ext, map, entry, metadata);
                 }
                 //Still want to keep info about files without extensions
                 None => {
                     let ext = "".to_string();
-                    add_file_info_to_map(ext, map, entry, metadata);
+                    add_file_info_to_map(args, ext, map, entry, metadata);
                 }
             }
         }
@@ -292,6 +301,7 @@ fn search_dir(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
 }
 
 fn add_file_info_to_map(
+    args: &Args,
     extension: String,
     map: &mut HashMap<String, FileTypeInfo>,
     entry: &DirEntry,
@@ -305,11 +315,16 @@ fn add_file_info_to_map(
     });
     t.num_files += 1;
     t.size_in_bytes += metadata.len();
+    let path = if args.full_path() {
+        entry.path().canonicalize().unwrap()
+    } else {
+        entry.path()
+    };
     if metadata.len() > t.largest_file.size() {
-        t.largest_file = FileTypeInfoRecords::new(entry.path(), metadata.len());
+        t.largest_file = FileTypeInfoRecords::new(path.clone(), metadata.len());
     }
     if metadata.len() < t.smallest_file.size() {
-        t.smallest_file = FileTypeInfoRecords::new(entry.path(), metadata.len());
+        t.smallest_file = FileTypeInfoRecords::new(path, metadata.len());
     }
 }
 
@@ -342,6 +357,7 @@ mod tests {
             false,
             false,
             None,
+            false,
         );
         let res = analyze(&test_args).unwrap();
         let expected = AnalyzedInfo {
@@ -362,6 +378,7 @@ mod tests {
             false,
             false,
             None,
+            false,
         );
         let res = analyze(&test_args).unwrap();
         let expected = AnalyzedInfo {
@@ -382,6 +399,7 @@ mod tests {
             false,
             false,
             None,
+            false,
         );
         let res = analyze(&test_args).unwrap();
         let mut hash_map: HashMap<FileExtension, FileTypeInfo> = HashMap::new();
@@ -474,6 +492,7 @@ mod tests {
             true,
             false,
             None,
+            false,
         );
         let res = analyze(&test_args).unwrap();
         let expected = AnalyzedInfo {
