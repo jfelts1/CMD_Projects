@@ -1,245 +1,81 @@
 use std::{
     collections::HashMap,
     fs::{self, DirEntry},
-    path::{Path, PathBuf},
+    path::{self, PathBuf},
 };
 
-use crate::{Args, FileExtension};
+use crate::{AnalyzedInfo, Args, FileTypeInfo, FileTypeInfoRecords, SymlinkInfo, Timer};
 use anyhow::Result;
-use serde::Serialize;
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
-pub struct AnalyzedInfo {
-    ///Count of directories found during the analysis
-    found_dirs: u32,
-    ///Count of files found during the analysis
-    found_files: u32,
-    ///Info about symlinks found during the analysis
-    found_symlinks: Option<SymlinkInfo>,
-    ///Info about files grouped by file type
-    file_info: Option<HashMap<FileExtension, FileTypeInfo>>,
-}
-
-impl std::fmt::Display for AnalyzedInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let symlinks_str = match self.found_symlinks {
-            Some(sym) => format!("\n{sym}"),
-            None => "".to_string(),
-        };
-        let info_str = match &self.file_info {
-            Some(info) => {
-                let mut out = String::new();
-                for (file_ext, ft_info) in info {
-                    out.push_str(&format!("\nFile extension:{file_ext}{ft_info}"));
-                }
-                out
-            }
-            None => "".to_string(),
-        };
-        let str = format!(
-            "Found directories: {}\nFound files: {}{symlinks_str}{info_str}",
-            self.found_dirs, self.found_files
-        );
-        write!(f, "{str}")
-    }
-}
-
-impl AnalyzedInfo {
-    ///Count of directories found during the analysis
-    pub fn found_dirs(&self) -> u32 {
-        self.found_dirs
-    }
-    ///Count of files found during the analysis
-    pub fn found_files(&self) -> u32 {
-        self.found_files
-    }
-    ///Info about files grouped by file type
-    pub fn file_info(&self) -> Option<&HashMap<FileExtension, FileTypeInfo>> {
-        self.file_info.as_ref()
-    }
-
-    pub fn found_symlinks(&self) -> Option<&SymlinkInfo> {
-        self.found_symlinks.as_ref()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize,Default)]
-pub struct FileTypeInfo {
-    num_files: u32,
-    largest_file: FileTypeInfoRecords,
-    smallest_file: FileTypeInfoRecords,
-    ///Total size of all files of this type
-    size_in_bytes: u64,
-}
-
-impl std::fmt::Display for FileTypeInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "\n  Number of files:{}\n  Largest file: {}\n  Smallest file: {}\n  Size in bytes for this type: {}",
-            self.num_files, self.largest_file, self.smallest_file, self.size_in_bytes
-        )
-    }
-}
-
-///This is for holding info about specific notable files
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
-pub struct FileTypeInfoRecords {
-    ///Path to the path
-    path: PathBuf,
-    ///The size of the file
-    size: u64,
-}
-
-impl std::fmt::Display for FileTypeInfoRecords {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "\n    Path:{}\n    Size: {}",
-            self.path.to_string_lossy(),
-            self.size
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default, Copy, Serialize)]
-pub struct SymlinkInfo {
-    found_symlinks: u32,
-    ///Number of symlinks that point to files
-    file_symlinks: u32,
-    ///Number of symlinks that point to directories
-    dir_symlinks: u32,
-}
-
-impl std::fmt::Display for SymlinkInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"\nFound symbolic links:{}\nSymlinks that point to files: {}\nSymlinks that point to directories: {}",self.found_symlinks,self.file_symlinks,self.dir_symlinks)
-    }
-}
-
-impl SymlinkInfo {
-    pub fn new(found_symlinks: u32, file_symlinks: u32, dir_symlinks: u32) -> Self {
-        Self {
-            found_symlinks,
-            file_symlinks,
-            dir_symlinks,
-        }
-    }
-
-    ///Number of symlinks that point to files
-    pub fn file_symlinks(&self) -> u32 {
-        self.file_symlinks
-    }
-
-    pub fn found_symlinks(&self) -> u32 {
-        self.found_symlinks
-    }
-
-    ///Number of symlinks that point to directories
-    pub fn dir_symlinks(&self) -> u32 {
-        self.dir_symlinks
-    }
-}
-
-impl FileTypeInfoRecords {
-    pub fn new(path: PathBuf, size: u64) -> Self {
-        Self { path, size }
-    }
-
-    ///Path to the path
-    pub fn path(&self) -> &Path {
-        self.path.as_path()
-    }
-    ///The size of the file
-    pub fn size(&self) -> u64 {
-        self.size
-    }
-}
-
-impl FileTypeInfo {
-    pub fn new() -> Self {
-        Self {
-            num_files: u32::default(),
-            size_in_bytes: u64::default(),
-            largest_file: FileTypeInfoRecords::default(),
-            smallest_file: FileTypeInfoRecords::default(),
-        }
-    }
-
-    pub fn size_in_bytes(&self) -> u64 {
-        self.size_in_bytes
-    }
-
-    pub fn num_files(&self) -> u32 {
-        self.num_files
-    }
-
-    pub fn largest_file(&self) -> &FileTypeInfoRecords {
-        &self.largest_file
-    }
-
-    pub fn smallest_file(&self) -> &FileTypeInfoRecords {
-        &self.smallest_file
-    }
-}
 
 pub fn analyze(args: &Args) -> Result<AnalyzedInfo> {
     let mut out = set_up_anaylzed_info(args);
-    search_dir(args, &mut out)?;
+    search_dirs(args, &mut out)?;
+    out.calculate_percentages_for_info();
     if args.follow_symlinks() {
         //Sanity check to make sure things add up
         debug_assert_eq!(
-            out.found_symlinks.unwrap().found_symlinks,
-            out.found_symlinks.unwrap().dir_symlinks + out.found_symlinks.unwrap().file_symlinks
+            out.found_symlinks().unwrap().found_symlinks(),
+            out.found_symlinks().unwrap().dir_symlinks()
+                + out.found_symlinks().unwrap().file_symlinks()
         );
     }
     Ok(out)
 }
 
-fn search_dir(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
+fn search_dirs(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
     let mut dirs_to_analyze = vec![args.path_to_analyze().clone()];
     //used to prevent repeatedly counting the same item multiple times while following symlinks
     let mut found_items = Vec::new();
+    let mut timer = args.updates().map(Timer::new);
+    let ignore_these = set_up_ignore_these(args)?;
     while let Some(dir) = dirs_to_analyze.pop() {
         let cur_dir = dir.read_dir()?;
         for entry in cur_dir {
             let entry = entry?;
             let metadata = entry.metadata()?;
-            let cannonical_path = entry.path().canonicalize()?;
-            if metadata.is_dir() && !found_items.contains(&cannonical_path) {
-                handle_dirs(args, &mut dirs_to_analyze, &entry, analyed_info);
-                if args.follow_symlinks() {
-                    found_items.push(cannonical_path);
+            let path = path::absolute(entry.path())?;
+            if let Some(ignore_these) = &ignore_these {
+                if ignore_these
+                    .iter()
+                    .any(|p| path::absolute(p).unwrap() == path)
+                {
+                    continue;
                 }
-            } else if metadata.is_file() && !found_items.contains(&cannonical_path) {
-                handle_files(args, analyed_info, &entry, &metadata);
+            }
+            if metadata.is_dir() && !found_items.contains(&path) {
+                handle_dirs(args, &mut dirs_to_analyze, &entry, analyed_info)?;
+                //No need to track found items since there is no risk of loops or double counting
                 if args.follow_symlinks() {
-                    found_items.push(cannonical_path);
+                    found_items.push(path);
+                }
+            } else if metadata.is_file() && !found_items.contains(&path) {
+                handle_files(args, analyed_info, &entry, &metadata)?;
+                //No need to track found items since there is no risk of loops or double counting
+                if args.follow_symlinks() {
+                    found_items.push(path);
                 }
             } else if args.follow_symlinks()
                 && metadata.is_symlink()
-                && !found_items.contains(&cannonical_path)
+                && !found_items.contains(&path)
             {
-                let path = fs::read_link(entry.path())?;
-                let metadata = path.metadata()?;
-                let cannonical_path = path.canonicalize()?;
-
-                if !found_items.contains(&cannonical_path) {
-                    if metadata.is_dir() {
-                        handle_dirs(args, &mut dirs_to_analyze, &entry, analyed_info);
-                        if let Some(symlink) = &mut analyed_info.found_symlinks {
-                            symlink.dir_symlinks += 1;
-                            symlink.found_symlinks += 1;
-                        }
-                    } else if metadata.is_file() {
-                        handle_files(args, analyed_info, &entry, &metadata);
-                        if let Some(symlink) = &mut analyed_info.found_symlinks {
-                            symlink.file_symlinks += 1;
-                            symlink.found_symlinks += 1;
-                        }
-                    }
-                    found_items.push(cannonical_path);
-                }
+                handle_symlinks(
+                    entry,
+                    &mut found_items,
+                    args,
+                    &mut dirs_to_analyze,
+                    analyed_info,
+                )?;
+            }
+        }
+        if let Some(timer) = &mut timer {
+            timer.update();
+            if timer.ended() {
+                println!(
+                    "Update: {} found dirs, {} found files",
+                    analyed_info.found_dirs(),
+                    analyed_info.found_files()
+                );
+                timer.reset();
             }
         }
     }
@@ -249,21 +85,28 @@ fn search_dir(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
         dirs_to_analyze: &mut Vec<PathBuf>,
         entry: &DirEntry,
         analyed_info: &mut AnalyzedInfo,
-    ) {
-        if !args.no_recurse() {
-            dirs_to_analyze.push(entry.path());
-        }
-        if args.verbose() {
-            if args.full_path() {
-                println!(
-                    "dir: {}",
-                    entry.path().canonicalize().unwrap().to_string_lossy()
-                );
-            } else {
-                println!("dir: {}", entry.path().to_string_lossy());
+    ) -> anyhow::Result<()> {
+        handle_args(args, dirs_to_analyze, entry)?;
+        *analyed_info.found_dirs_mut() += 1;
+
+        fn handle_args(
+            args: &Args,
+            dirs_to_analyze: &mut Vec<PathBuf>,
+            entry: &DirEntry,
+        ) -> anyhow::Result<()> {
+            if !args.no_recurse() {
+                dirs_to_analyze.push(entry.path());
             }
+            if args.verbose() {
+                if args.full_path() {
+                    println!("dir: {}", path::absolute(entry.path())?.to_string_lossy());
+                } else {
+                    println!("dir: {}", entry.path().to_string_lossy());
+                }
+            }
+            Ok(())
         }
-        analyed_info.found_dirs += 1;
+        Ok(())
     }
 
     fn handle_files(
@@ -271,33 +114,100 @@ fn search_dir(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
         analyed_info: &mut AnalyzedInfo,
         entry: &DirEntry,
         metadata: &fs::Metadata,
-    ) {
-        if args.verbose() {
-            if args.full_path() {
-                println!(
-                    "file: {}",
-                    entry.path().canonicalize().unwrap().to_string_lossy()
-                )
-            } else {
-                println!("file: {}", entry.path().to_string_lossy())
-            }
-        }
-        analyed_info.found_files += 1;
-        if let Some(map) = &mut analyed_info.file_info {
-            match entry.path().extension() {
-                Some(ext) => {
-                    let ext = ext.to_os_string().to_string_lossy().to_string();
-                    add_file_info_to_map(args, ext, map, entry, metadata);
-                }
-                //Still want to keep info about files without extensions
-                None => {
-                    let ext = "".to_string();
-                    add_file_info_to_map(args, ext, map, entry, metadata);
+    ) -> anyhow::Result<()> {
+        handle_file_args(args, analyed_info.file_info_mut(), entry, metadata)?;
+        *analyed_info.found_files_mut() += 1;
+        *analyed_info.total_bytes_mut() += metadata.len();
+
+        fn handle_file_args(
+            args: &Args,
+            map: Option<&mut HashMap<String, FileTypeInfo>>,
+            entry: &DirEntry,
+            metadata: &fs::Metadata,
+        ) -> anyhow::Result<()> {
+            if args.verbose() {
+                if args.full_path() {
+                    println!("file: {}", path::absolute(entry.path())?.to_string_lossy())
+                } else {
+                    println!("file: {}", entry.path().to_string_lossy())
                 }
             }
+
+            if let Some(map) = map {
+                match entry.path().extension() {
+                    Some(ext) => {
+                        let ext = ext.to_os_string().to_string_lossy().to_string();
+                        add_file_info_to_map(args, ext, map, entry, metadata)?;
+                    }
+                    //Still want to keep info about files without extensions
+                    None => {
+                        let ext = "".to_string();
+                        add_file_info_to_map(args, ext, map, entry, metadata)?;
+                    }
+                }
+            }
+            Ok(())
         }
+        Ok(())
     }
+
+    ///Traverses and counts symlinks and if the target is not already counted counts it
+    fn handle_symlinks(
+        entry: DirEntry,
+        found_items: &mut Vec<PathBuf>,
+        args: &Args,
+        dirs_to_analyze: &mut Vec<PathBuf>,
+        analyed_info: &mut AnalyzedInfo,
+    ) -> Result<(), anyhow::Error> {
+        let path = fs::read_link(entry.path())?;
+        let metadata = path.metadata()?;
+
+        //don't look at entries that have been seen before
+        //prevents following symlink loops and counting entries multiple times
+        if !found_items.contains(&path) {
+            if metadata.is_dir() {
+                handle_dirs(args, dirs_to_analyze, &entry, analyed_info)?;
+            } else if metadata.is_file() {
+                handle_files(args, analyed_info, &entry, &metadata)?;
+            }
+
+            found_items.push(path);
+        }
+
+        //Count the found symlinks here since a symlink can be new but point to a entry that
+        //has already been seen before. We still want to count the symlink as found though
+        if let Some(symlink) = analyed_info.found_symlinks_mut() {
+            if metadata.is_dir() {
+                *symlink.dir_symlinks_mut() += 1;
+            } else if metadata.is_file() {
+                *symlink.file_symlinks_mut() += 1;
+            }
+            *symlink.found_symlinks_mut() += 1;
+        }
+
+        Ok(())
+    }
+
     Ok(())
+}
+
+fn set_up_ignore_these(args: &Args) -> Result<Option<Vec<PathBuf>>, anyhow::Error> {
+    let ignore_these: Option<Vec<_>> = if let Some(s) = args.ignore_entries() {
+        let paths: Vec<_> = s.split(',').map(|s| s.trim()).map(PathBuf::from).collect();
+        for p in &paths {
+            let exists = p.try_exists()?;
+            if !exists {
+                eprintln!(
+                    "WARNING: Can't ignore \"{}\" because it doesn't exist",
+                    p.to_string_lossy()
+                );
+            }
+        }
+        Some(paths)
+    } else {
+        None
+    };
+    Ok(ignore_these)
 }
 
 fn add_file_info_to_map(
@@ -306,36 +216,37 @@ fn add_file_info_to_map(
     map: &mut HashMap<String, FileTypeInfo>,
     entry: &DirEntry,
     metadata: &std::fs::Metadata,
-) {
-    let t = map.entry(extension).or_insert(FileTypeInfo {
-        num_files: 0,
-        size_in_bytes: 0,
-        largest_file: FileTypeInfoRecords::default(),
-        smallest_file: FileTypeInfoRecords::new(PathBuf::default(), u64::MAX),
-    });
-    t.num_files += 1;
-    t.size_in_bytes += metadata.len();
+) -> anyhow::Result<()> {
+    let t = map.entry(extension).or_insert(FileTypeInfo::new(
+        0,
+        0,
+        FileTypeInfoRecords::default(),
+        FileTypeInfoRecords::new(PathBuf::default(), u64::MAX),
+    ));
+    *t.num_files_mut() += 1;
+    *t.size_in_bytes_mut() += metadata.len();
     let path = if args.full_path() {
-        entry.path().canonicalize().unwrap()
+        path::absolute(entry.path())?
     } else {
         entry.path()
     };
-    if metadata.len() > t.largest_file.size() {
-        t.largest_file = FileTypeInfoRecords::new(path.clone(), metadata.len());
+    if metadata.len() > t.largest_file().size() {
+        t.set_largest_file(FileTypeInfoRecords::new(path.clone(), metadata.len()));
     }
-    if metadata.len() < t.smallest_file.size() {
-        t.smallest_file = FileTypeInfoRecords::new(path, metadata.len());
+    if metadata.len() < t.smallest_file().size() {
+        t.set_smallest_file(FileTypeInfoRecords::new(path, metadata.len()));
     }
+    Ok(())
 }
 
 ///Configures `AnalyzedInfo` based on the `Args` given
 fn set_up_anaylzed_info(args: &Args) -> AnalyzedInfo {
     let mut out = AnalyzedInfo::default();
     if args.file_info() {
-        out.file_info = Some(HashMap::default());
+        out.set_file_info(Some(HashMap::default()));
     }
     if args.follow_symlinks() {
-        out.found_symlinks = Some(SymlinkInfo::default());
+        out.set_found_symlinks(Some(SymlinkInfo::default()));
     }
     out
 }
@@ -343,6 +254,8 @@ fn set_up_anaylzed_info(args: &Args) -> AnalyzedInfo {
 #[cfg(test)]
 mod tests {
     use std::{path::PathBuf, str::FromStr};
+
+    use crate::FileExtension;
 
     use super::*;
 
@@ -358,14 +271,11 @@ mod tests {
             false,
             None,
             false,
+            None,
+            None,
         );
         let res = analyze(&test_args).unwrap();
-        let expected = AnalyzedInfo {
-            found_dirs: 4,
-            found_files: 7,
-            found_symlinks: None,
-            file_info: None,
-        };
+        let expected = AnalyzedInfo::new(4, 7, None, None, 432);
         assert_eq!(res, expected);
     }
 
@@ -379,14 +289,11 @@ mod tests {
             false,
             None,
             false,
+            None,
+            None,
         );
         let res = analyze(&test_args).unwrap();
-        let expected = AnalyzedInfo {
-            found_dirs: 2,
-            found_files: 4,
-            found_symlinks: None,
-            file_info: None,
-        };
+        let expected = AnalyzedInfo::new(2, 4, None, None, 407);
         assert_eq!(res, expected);
     }
 
@@ -400,6 +307,8 @@ mod tests {
             false,
             None,
             false,
+            None,
+            None,
         );
         let res = analyze(&test_args).unwrap();
         let mut hash_map: HashMap<FileExtension, FileTypeInfo> = HashMap::new();
@@ -407,79 +316,87 @@ mod tests {
 
         hash_map.insert(
             "txt".to_string(),
-            FileTypeInfo {
-                size_in_bytes: 9,
-                num_files: 1,
-                largest_file: FileTypeInfoRecords::default(),
-                smallest_file: FileTypeInfoRecords::default(),
-            },
+            FileTypeInfo::new(
+                9,
+                1,
+                FileTypeInfoRecords::default(),
+                FileTypeInfoRecords::default(),
+            ),
         ); //file1.txt
-        let h = hash_map.entry("txt".to_string()).or_insert(FileTypeInfo {
-            size_in_bytes: 14,
-            num_files: 1,
-            largest_file: FileTypeInfoRecords::default(),
-            smallest_file: FileTypeInfoRecords::default(),
-        }); //file2.txt
-        h.size_in_bytes += 14;
-        h.num_files += 1;
+        let h = hash_map
+            .entry("txt".to_string())
+            .or_insert(FileTypeInfo::new(
+                14,
+                1,
+                FileTypeInfoRecords::default(),
+                FileTypeInfoRecords::default(),
+            )); //file2.txt
+        *h.size_in_bytes_mut() += 14;
+        *h.num_files_mut() += 1;
         let mut path = PathBuf::from_str(TEST_DIR).unwrap();
         path.push("file2.txt");
-        h.largest_file = FileTypeInfoRecords::new(path, 14);
-        let h = hash_map.entry("txt".to_string()).or_insert(FileTypeInfo {
-            size_in_bytes: 9,
-            num_files: 1,
-            largest_file: FileTypeInfoRecords::default(),
-            smallest_file: FileTypeInfoRecords::default(),
-        }); //folder1/file5.txt
-        h.size_in_bytes += 9;
-        h.num_files += 1;
-        let h = hash_map.entry("txt".to_string()).or_insert(FileTypeInfo {
-            size_in_bytes: 7,
-            num_files: 1,
-            largest_file: FileTypeInfoRecords::default(),
-            smallest_file: FileTypeInfoRecords::default(),
-        }); //folder2/file6.txt
-        h.size_in_bytes += 7;
-        h.num_files += 1;
+        h.set_largest_file(FileTypeInfoRecords::new(path, 14));
+        let h = hash_map
+            .entry("txt".to_string())
+            .or_insert(FileTypeInfo::new(
+                9,
+                1,
+                FileTypeInfoRecords::default(),
+                FileTypeInfoRecords::default(),
+            )); //folder1/file5.txt
+        *h.size_in_bytes_mut() += 9;
+        *h.num_files_mut() += 1;
+        let h = hash_map
+            .entry("txt".to_string())
+            .or_insert(FileTypeInfo::new(
+                7,
+                1,
+                FileTypeInfoRecords::default(),
+                FileTypeInfoRecords::default(),
+            )); //folder2/file6.txt
+        *h.size_in_bytes_mut() += 7;
+        *h.num_files_mut() += 1;
         let mut path = PathBuf::from_str(TEST_DIR).unwrap();
         path.push("folder2/file6.txt");
-        h.smallest_file = FileTypeInfoRecords::new(path, 7);
-        let h = hash_map.entry("txt".to_string()).or_insert(FileTypeInfo {
-            size_in_bytes: 9,
-            num_files: 1,
-            largest_file: FileTypeInfoRecords::default(),
-            smallest_file: FileTypeInfoRecords::default(),
-        }); //folder2/folder3/folder4/deepfile1.txt
-        h.size_in_bytes += 9;
-        h.num_files += 1;
+        h.set_smallest_file(FileTypeInfoRecords::new(path, 7));
+        let h = hash_map
+            .entry("txt".to_string())
+            .or_insert(FileTypeInfo::new(
+                9,
+                1,
+                FileTypeInfoRecords::default(),
+                FileTypeInfoRecords::default(),
+            )); //folder2/folder3/folder4/deepfile1.txt
+        *h.size_in_bytes_mut() += 9;
+        *h.num_files_mut() += 1;
         let mut path = PathBuf::from_str(TEST_DIR).unwrap();
         path.push("file3.rtf");
         hash_map.insert(
             "rtf".to_string(),
-            FileTypeInfo {
-                size_in_bytes: 196,
-                num_files: 1,
-                largest_file: FileTypeInfoRecords::new(path.clone(), 196),
-                smallest_file: FileTypeInfoRecords::new(path, 196),
-            },
+            FileTypeInfo::new(
+                196,
+                1,
+                FileTypeInfoRecords::new(path.clone(), 196),
+                FileTypeInfoRecords::new(path, 196),
+            ),
         ); //file3.rtf
         let mut path = PathBuf::from_str(TEST_DIR).unwrap();
         path.push("file4.zip");
         hash_map.insert(
             "zip".to_string(),
-            FileTypeInfo {
-                size_in_bytes: 188,
-                num_files: 1,
-                largest_file: FileTypeInfoRecords::new(path.clone(), 188),
-                smallest_file: FileTypeInfoRecords::new(path.clone(), 188),
-            },
+            FileTypeInfo::new(
+                188,
+                1,
+                FileTypeInfoRecords::new(path.clone(), 188),
+                FileTypeInfoRecords::new(path.clone(), 188),
+            ),
         ); //file4.zip
-        let expected = AnalyzedInfo {
-            found_dirs: 4,
-            found_files: 7,
-            found_symlinks: None,
-            file_info: Some(hash_map),
-        };
+
+        let (total_files, total_bytes) = get_total_files_and_bytes_from_map(&hash_map);
+        for (_, info) in hash_map.iter_mut() {
+            info.calculate_percentages(total_bytes, total_files);
+        }
+        let expected = AnalyzedInfo::new(4, 7, None, Some(hash_map), 432);
         assert_eq!(res, expected);
     }
 
@@ -493,14 +410,152 @@ mod tests {
             false,
             None,
             false,
+            None,
+            None,
         );
         let res = analyze(&test_args).unwrap();
-        let expected = AnalyzedInfo {
-            found_dirs: 6,
-            found_files: 8,
-            found_symlinks: Some(SymlinkInfo::new(2, 1, 1)),
-            file_info: None,
-        };
+        let expected = AnalyzedInfo::new(6, 8, Some(SymlinkInfo::new(2, 1, 1)), None, 432);
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn analyze_ignore_entries() {
+        let path = PathBuf::from_str(TEST_DIR).unwrap();
+        let mut str1 = TEST_DIR.to_string();
+        str1.push_str("folder2/folder3");
+        let mut str2 = TEST_DIR.to_string();
+        str2.push_str("file4.zip");
+        let ignore_entries = format!("{str1}, {str2}");
+        let test_args = Args::new(
+            path,
+            false,
+            false,
+            false,
+            false,
+            None,
+            false,
+            Some(ignore_entries),
+            None,
+        );
+        let res = analyze(&test_args).unwrap();
+        let expected = AnalyzedInfo::new(2, 5, None, None, 235);
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn analyze_ignore_entries_file_info() {
+        let path = PathBuf::from_str(TEST_DIR).unwrap();
+        let mut str1 = TEST_DIR.to_string();
+        str1.push_str("folder2/folder3");
+        let mut str2 = TEST_DIR.to_string();
+        str2.push_str("file4.zip");
+        let ignore_entries = format!("{str1}, {str2}");
+        let test_args = Args::new(
+            path,
+            false,
+            true,
+            false,
+            false,
+            None,
+            false,
+            Some(ignore_entries),
+            None,
+        );
+        let mut hash_map: HashMap<FileExtension, FileTypeInfo> = HashMap::new();
+        //Byte values are from windows properties Size: field for each file
+
+        hash_map.insert(
+            "txt".to_string(),
+            FileTypeInfo::new(
+                9,
+                1,
+                FileTypeInfoRecords::default(),
+                FileTypeInfoRecords::default(),
+            ),
+        ); //file1.txt
+        let h = hash_map
+            .entry("txt".to_string())
+            .or_insert(FileTypeInfo::new(
+                14,
+                1,
+                FileTypeInfoRecords::default(),
+                FileTypeInfoRecords::default(),
+            )); //file2.txt
+        *h.size_in_bytes_mut() += 14;
+        *h.num_files_mut() += 1;
+        let mut path = PathBuf::from_str(TEST_DIR).unwrap();
+        path.push("file2.txt");
+        h.set_largest_file(FileTypeInfoRecords::new(path, 14));
+        let h = hash_map
+            .entry("txt".to_string())
+            .or_insert(FileTypeInfo::new(
+                9,
+                1,
+                FileTypeInfoRecords::default(),
+                FileTypeInfoRecords::default(),
+            )); //folder1/file5.txt
+        *h.size_in_bytes_mut() += 9;
+        *h.num_files_mut() += 1;
+        let h = hash_map
+            .entry("txt".to_string())
+            .or_insert(FileTypeInfo::new(
+                7,
+                1,
+                FileTypeInfoRecords::default(),
+                FileTypeInfoRecords::default(),
+            )); //folder2/file6.txt
+        *h.size_in_bytes_mut() += 7;
+        *h.num_files_mut() += 1;
+        let mut path = PathBuf::from_str(TEST_DIR).unwrap();
+        path.push("folder2/file6.txt");
+        h.set_smallest_file(FileTypeInfoRecords::new(path, 7));
+
+        let mut path = PathBuf::from_str(TEST_DIR).unwrap();
+        path.push("file3.rtf");
+        hash_map.insert(
+            "rtf".to_string(),
+            FileTypeInfo::new(
+                196,
+                1,
+                FileTypeInfoRecords::new(path.clone(), 196),
+                FileTypeInfoRecords::new(path, 196),
+            ),
+        ); //file3.rtf
+
+        let (total_files, total_bytes) = get_total_files_and_bytes_from_map(&hash_map);
+        for (_, info) in hash_map.iter_mut() {
+            info.calculate_percentages(total_bytes, total_files);
+        }
+        let res = analyze(&test_args).unwrap();
+        let expected = AnalyzedInfo::new(2, 5, None, Some(hash_map), 235);
+        assert_eq!(res, expected);
+    }
+
+    fn get_total_files_and_bytes_from_map(hash_map: &HashMap<String, FileTypeInfo>) -> (u32, u64) {
+        let total_files = hash_map
+            .iter()
+            .fold(0, |acc, (_, info)| acc + info.num_files());
+        let total_bytes = hash_map
+            .iter()
+            .fold(0, |acc, (_, info)| acc + info.size_in_bytes());
+        (total_files, total_bytes)
+    }
+
+    #[test]
+    fn analyze_symlink_loop() {
+        let test_args = Args::new(
+            PathBuf::from_str("../test_symlink_loop/").unwrap(),
+            false,
+            false,
+            true,
+            false,
+            None,
+            false,
+            None,
+            None,
+        );
+        let res = analyze(&test_args).unwrap();
+        let expected = AnalyzedInfo::new(2, 2, Some(SymlinkInfo::new(2, 0, 2)), None, 21);
         assert_eq!(res, expected);
     }
 }

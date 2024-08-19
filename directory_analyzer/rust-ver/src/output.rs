@@ -21,10 +21,7 @@ pub fn output(args: &Args, analyzed_info: Result<AnalyzedInfo, Error>) -> anyhow
     }
 }
 
-fn write_workbook(
-    path: &Path,
-    mut workbook: Workbook,
-) -> Result<std::path::PathBuf, Error> {
+fn write_workbook(path: &Path, mut workbook: Workbook) -> Result<std::path::PathBuf, Error> {
     let mut path = path.to_path_buf();
     if path.extension().is_none() {
         path.set_extension("xlsx");
@@ -45,6 +42,9 @@ fn create_workbook(info: &AnalyzedInfo) -> Result<Workbook, Error> {
     worksheet.write_with_format(0, cur_col, "Found files", &bold_format)?;
     worksheet.write(1, cur_col, info.found_files())?;
     cur_col += 1;
+    worksheet.write_with_format(0, cur_col, "Total bytes", &bold_format)?;
+    worksheet.write(1, cur_col, info.total_bytes())?;
+    cur_col += 1;
     if let Some(symlink_info) = info.found_symlinks() {
         worksheet.write_with_format(0, cur_col, "Found symlinks", &bold_format)?;
         worksheet.write(1, cur_col, symlink_info.found_symlinks())?;
@@ -59,27 +59,76 @@ fn create_workbook(info: &AnalyzedInfo) -> Result<Workbook, Error> {
     worksheet.autofit();
     workbook.push_worksheet(worksheet);
     if let Some(file_info) = info.file_info() {
-        let mut fi_worksheet =Worksheet::new();
+        let mut fi_worksheet = Worksheet::new();
+        let mut cur_col = 0;
         fi_worksheet.set_name("File Info")?;
         let down_offset = 0;
         let tmp: Vec<_> = file_info.iter().enumerate().collect();
-        fi_worksheet.write_with_format(down_offset, 0, "File type", &bold_format)?;
-        fi_worksheet.write_with_format(down_offset, 1, "Num files", &bold_format)?;
-        fi_worksheet.write_with_format(down_offset, 2, "Total size of files(bytes)", &bold_format)?;
-        fi_worksheet.write_with_format(down_offset, 3, "Largest file", &bold_format)?;
-        fi_worksheet.write_with_format(down_offset, 4, "Largest file size(bytes)", &bold_format)?;
-        fi_worksheet.write_with_format(down_offset, 5, "Smallest file", &bold_format)?;
-        fi_worksheet.write_with_format(down_offset, 6, "Smallest file size(bytes)", &bold_format)?;
+        fi_worksheet.write_with_format(down_offset, cur_col, "File type", &bold_format)?;
+        cur_col += 1;
+        fi_worksheet.write_with_format(down_offset, cur_col, "Num files", &bold_format)?;
+        cur_col += 1;
+        fi_worksheet.write_with_format(down_offset, cur_col, "% of total files", &bold_format)?;
+        cur_col += 1;
+        fi_worksheet.write_with_format(
+            down_offset,
+            cur_col,
+            "Total size of files(bytes)",
+            &bold_format,
+        )?;
+        cur_col += 1;
+
+        fi_worksheet.write_with_format(down_offset, cur_col, "% of total bytes", &bold_format)?;
+        cur_col += 1;
+
+        fi_worksheet.write_with_format(down_offset, cur_col, "Largest file", &bold_format)?;
+        cur_col += 1;
+        fi_worksheet.write_with_format(
+            down_offset,
+            cur_col,
+            "Largest file size(bytes)",
+            &bold_format,
+        )?;
+        cur_col += 1;
+        fi_worksheet.write_with_format(down_offset, cur_col, "Smallest file", &bold_format)?;
+        cur_col += 1;
+        fi_worksheet.write_with_format(
+            down_offset,
+            cur_col,
+            "Smallest file size(bytes)",
+            &bold_format,
+        )?;
 
         for (i, (f_type, f_info)) in tmp {
             let i = i as u32 + down_offset + 1;
-            fi_worksheet.write(i, 0, f_type)?;
-            fi_worksheet.write(i, 1, f_info.num_files())?;
-            fi_worksheet.write(i, 2, f_info.size_in_bytes())?;
-            fi_worksheet.write(i, 3, f_info.largest_file().path().to_string_lossy())?;
-            fi_worksheet.write(i, 4, f_info.largest_file().size())?;
-            fi_worksheet.write(i, 5, f_info.smallest_file().path().to_string_lossy())?;
-            fi_worksheet.write(i, 6, f_info.smallest_file().size())?;
+            let mut cur_col = 0;
+            //File type
+            fi_worksheet.write(i, cur_col, f_type)?;
+            cur_col += 1;
+            //Num Files
+            fi_worksheet.write(i, cur_col, f_info.num_files())?;
+            cur_col += 1;
+            //% of total files
+            let (per_tot_file, per_tot_size) = f_info.percentages_in_string();
+            fi_worksheet.write(i, cur_col, per_tot_file)?;
+            cur_col += 1;
+            //Total size of files
+            fi_worksheet.write(i, cur_col, f_info.size_in_bytes())?;
+            cur_col += 1;
+            //% of total size
+            fi_worksheet.write(i, cur_col, per_tot_size)?;
+            cur_col += 1;
+            //Largest file path
+            fi_worksheet.write(i, cur_col, f_info.largest_file().path().to_string_lossy())?;
+            cur_col += 1;
+            //Largest file size
+            fi_worksheet.write(i, cur_col, f_info.largest_file().size())?;
+            cur_col += 1;
+            //Smallest file path
+            fi_worksheet.write(i, cur_col, f_info.smallest_file().path().to_string_lossy())?;
+            cur_col += 1;
+            //Smallest file size
+            fi_worksheet.write(i, cur_col, f_info.smallest_file().size())?;
         }
         fi_worksheet.autofit();
         workbook.push_worksheet(fi_worksheet);
