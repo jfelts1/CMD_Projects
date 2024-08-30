@@ -11,12 +11,11 @@ pub fn analyze(args: &Args) -> Result<AnalyzedInfo> {
     let mut out = set_up_anaylzed_info(args);
     search_dirs(args, &mut out)?;
     out.calculate_percentages_for_info();
-    if args.follow_symlinks() {
+    if let Some(sym) = out.found_symlinks() {
         //Sanity check to make sure things add up
         debug_assert_eq!(
-            out.found_symlinks().unwrap().found_symlinks(),
-            out.found_symlinks().unwrap().dir_symlinks()
-                + out.found_symlinks().unwrap().file_symlinks()
+            sym.found_symlinks(),
+            sym.dir_symlinks() + sym.file_symlinks()
         );
     }
     Ok(out)
@@ -54,7 +53,7 @@ fn search_dirs(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
                 if args.follow_symlinks() {
                     found_items.push(path);
                 }
-            } else if args.follow_symlinks()
+            } else if (args.count_symlinks() || args.follow_symlinks())
                 && metadata.is_symlink()
                 && !found_items.contains(&path)
             {
@@ -161,28 +160,31 @@ fn search_dirs(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
     ) -> Result<(), anyhow::Error> {
         let path = fs::read_link(entry.path())?;
         let metadata = path.metadata()?;
+        if args.follow_symlinks() {
+            //don't look at entries that have been seen before
+            //prevents following symlink loops and counting entries multiple times
+            if !found_items.contains(&path) {
+                if metadata.is_dir() {
+                    handle_dirs(args, dirs_to_analyze, &entry, analyed_info)?;
+                } else if metadata.is_file() {
+                    handle_files(args, analyed_info, &entry, &metadata)?;
+                }
 
-        //don't look at entries that have been seen before
-        //prevents following symlink loops and counting entries multiple times
-        if !found_items.contains(&path) {
-            if metadata.is_dir() {
-                handle_dirs(args, dirs_to_analyze, &entry, analyed_info)?;
-            } else if metadata.is_file() {
-                handle_files(args, analyed_info, &entry, &metadata)?;
+                found_items.push(path);
             }
-
-            found_items.push(path);
         }
 
-        //Count the found symlinks here since a symlink can be new but point to a entry that
-        //has already been seen before. We still want to count the symlink as found though
-        if let Some(symlink) = analyed_info.found_symlinks_mut() {
-            if metadata.is_dir() {
-                *symlink.dir_symlinks_mut() += 1;
-            } else if metadata.is_file() {
-                *symlink.file_symlinks_mut() += 1;
+        if args.count_symlinks() {
+            //Count the found symlinks here since a symlink can be new but point to a entry that
+            //has already been seen before. We still want to count the symlink as found though
+            if let Some(symlink) = analyed_info.found_symlinks_mut() {
+                if metadata.is_dir() {
+                    *symlink.dir_symlinks_mut() += 1;
+                } else if metadata.is_file() {
+                    *symlink.file_symlinks_mut() += 1;
+                }
+                *symlink.found_symlinks_mut() += 1;
             }
-            *symlink.found_symlinks_mut() += 1;
         }
 
         Ok(())
@@ -245,7 +247,7 @@ fn set_up_anaylzed_info(args: &Args) -> AnalyzedInfo {
     if args.file_info() {
         out.set_file_info(Some(HashMap::default()));
     }
-    if args.follow_symlinks() {
+    if args.count_symlinks() {
         out.set_found_symlinks(Some(SymlinkInfo::default()));
     }
     out
@@ -273,9 +275,11 @@ mod tests {
             false,
             None,
             None,
+            true,
+            false,
         );
         let res = analyze(&test_args).unwrap();
-        let expected = AnalyzedInfo::new(4, 7, None, None, 432);
+        let expected = AnalyzedInfo::new(4, 7, Some(SymlinkInfo::new(2, 1, 1)), None, 432);
         assert_eq!(res, expected);
     }
 
@@ -291,6 +295,8 @@ mod tests {
             false,
             None,
             None,
+            false,
+            false,
         );
         let res = analyze(&test_args).unwrap();
         let expected = AnalyzedInfo::new(2, 4, None, None, 407);
@@ -309,6 +315,8 @@ mod tests {
             false,
             None,
             None,
+            false,
+            false,
         );
         let res = analyze(&test_args).unwrap();
         let mut hash_map: HashMap<FileExtension, FileTypeInfo> = HashMap::new();
@@ -412,6 +420,8 @@ mod tests {
             false,
             None,
             None,
+            true,
+            false,
         );
         let res = analyze(&test_args).unwrap();
         let expected = AnalyzedInfo::new(6, 8, Some(SymlinkInfo::new(2, 1, 1)), None, 432);
@@ -436,6 +446,8 @@ mod tests {
             false,
             Some(ignore_entries),
             None,
+            false,
+            false,
         );
         let res = analyze(&test_args).unwrap();
         let expected = AnalyzedInfo::new(2, 5, None, None, 235);
@@ -460,6 +472,8 @@ mod tests {
             false,
             Some(ignore_entries),
             None,
+            false,
+            false,
         );
         let mut hash_map: HashMap<FileExtension, FileTypeInfo> = HashMap::new();
         //Byte values are from windows properties Size: field for each file
@@ -553,9 +567,31 @@ mod tests {
             false,
             None,
             None,
+            true,
+            false,
         );
         let res = analyze(&test_args).unwrap();
         let expected = AnalyzedInfo::new(2, 2, Some(SymlinkInfo::new(2, 0, 2)), None, 21);
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn analyze_follow_symlinks_no_count_symlinks() {
+        let test_args = Args::new(
+            PathBuf::from_str(TEST_DIR).unwrap(),
+            false,
+            false,
+            true,
+            false,
+            None,
+            false,
+            None,
+            None,
+            false,
+            false,
+        );
+        let res = analyze(&test_args).unwrap();
+        let expected = AnalyzedInfo::new(6, 8, None, None, 432);
         assert_eq!(res, expected);
     }
 }

@@ -38,7 +38,7 @@ impl std::fmt::Display for AnalyzedInfo {
             None => "".to_string(),
         };
         let str = format!(
-            "Found directories: {}\nFound files: {}\nTotal bytes: {} bytes{symlinks_str}{info_str}",
+            "Found directories: {}\nFound files: {}\nTotal bytes: {} bytes{symlinks_str}\n{info_str}",
             self.found_dirs, self.found_files, self.total_bytes
         );
         write!(f, "{str}")

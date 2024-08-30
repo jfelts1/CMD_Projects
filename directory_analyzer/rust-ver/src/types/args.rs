@@ -2,8 +2,10 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
+const L_ABOUT:&str = "This program is used to analyze a directory and tell you about the contents.";
+
 #[derive(Parser, Debug)]
-#[command(version,about,long_about = None)]
+#[command(version,about,long_about = L_ABOUT)]
 pub struct Args {
     ///Requied path to analyze
     path_to_analyze: PathBuf,
@@ -16,15 +18,22 @@ pub struct Args {
     #[arg(short = 'f', long, default_value_t = false)]
     file_info: bool,
 
-    ///Follow symlinks as if they were a normal object
+    ///Follow symlinks as if they were a normal object.
+    ///
+    /// NOTE: Due to the need to track found files and directories to prevent counting the same entry multiple times, this has a noticable performance impact.
+    /// Due to this unless you need to actually follow symlinks it is recomended to not use this flag.
     #[arg(short = 's', long, default_value_t = false)]
     follow_symlinks: bool,
+
+    ///Counts symlinks found but does not follow them
+    #[arg(short = 'c', long, default_value_t = false)]
+    count_symlinks: bool,
 
     ///Print each object as it is found
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
 
-    ///Export info to a xlsx file
+    ///Export info to a xlsx file at the location specified
     #[arg(short, long)]
     export_xlsx: Option<PathBuf>,
 
@@ -36,9 +45,13 @@ pub struct Args {
     #[arg(short = 'i', long)]
     ignore_entries: Option<String>,
 
-    ///Provides periodic updates about how many entries have been analyized. Value in Option is seconds between updates.
+    ///Provides periodic updates about how many entries have been analyized. Value is seconds between updates.
     #[arg(short, long)]
     updates: Option<u64>,
+
+    ///Displays the time the program took to run to stdout
+    #[arg(short, long, default_value_t = false)]
+    time: bool,
 }
 
 impl Args {
@@ -53,6 +66,8 @@ impl Args {
         full_path: bool,
         ignore_entries: Option<String>,
         updates: Option<u64>,
+        count_symlinks: bool,
+        time: bool,
     ) -> Self {
         Self {
             path_to_analyze,
@@ -64,6 +79,8 @@ impl Args {
             full_path,
             ignore_entries,
             updates,
+            count_symlinks,
+            time,
         }
     }
 
@@ -83,6 +100,9 @@ impl Args {
     }
 
     ///Follow symlinks as if they were a normal object
+    ///
+    /// NOTE: Due to the need to track found files and directories to prevent counting the same entry multiple times, this has a noticable performance impact.
+    /// Due to this unless you need to actually follow symlinks it is reccomended to not use this flag.
     pub fn follow_symlinks(&self) -> bool {
         self.follow_symlinks
     }
@@ -109,5 +129,15 @@ impl Args {
     ///Provides periodic updates about how many entries have been analyized. Value in Option is seconds between updates.
     pub fn updates(&self) -> Option<u64> {
         self.updates
+    }
+
+    ///Counts symlinks found but does not follow them
+    pub fn count_symlinks(&self) -> bool {
+        self.count_symlinks
+    }
+
+    ///Displays the time the program took to run to stdout
+    pub fn time(&self) -> bool {
+        self.time
     }
 }
