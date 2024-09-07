@@ -2,12 +2,17 @@ namespace UnitTests;
 using Xunit;
 using dira.types;
 using dira;
-using Microsoft.VisualBasic;
 
 public class AnalyzeUnitTests
 {
-
-    const string TEST_DIR = "../test/";
+    //Because paths are strings not a dedicated type 
+#if WINDOWS
+    const string ROOT_DIR = @"..\..\..\..\";
+    const string TEST_DIR = ROOT_DIR + @"..\test\";
+#elif LINUX || MAC
+    const string ROOT_DIR = @"../../../../";
+    const string TEST_DIR = ROOT_DIR + @"../test/";
+#endif
     [Fact]
     public void AnalyzeDefaultSettings()
     {
@@ -29,7 +34,7 @@ public class AnalyzeUnitTests
         sym.SetFileSymlinks(1);
         AnalyzedInfo expected = new()
         { FoundDirs = 4, FoundFiles = 7, FoundSymlinks = sym, FileInfo = null, TotalBytes = 432 };
-        Assert.Equal(res, expected);
+        Assert.Equal(expected, res);
     }
 
     [Fact]
@@ -49,7 +54,7 @@ public class AnalyzeUnitTests
            );
         AnalyzedInfo res = A.Analyze(test_args);
         AnalyzedInfo expected = new() { FoundDirs = 2, FoundFiles = 4, FoundSymlinks = null, FileInfo = null, TotalBytes = 407 };
-        Assert.Equal(res, expected);
+        Assert.Equal(expected, res);
     }
 
     [Fact]
@@ -86,7 +91,7 @@ public class AnalyzeUnitTests
         //folder2/file6.txt
         hash_map[txt].NumFiles += 1;
         hash_map[txt].SizeInBytes += 7;
-        hash_map[txt].SmallestFile = new FileTypeInfoRecords(TEST_DIR + "folder2/file6.txt", 7);
+        hash_map[txt].SmallestFile = new FileTypeInfoRecords(TEST_DIR + "folder2" + Path.DirectorySeparatorChar + "file6.txt", 7);
 
         //folder2/folder3/folder4/deepfile1.txt
         hash_map[txt].NumFiles += 1;
@@ -102,7 +107,7 @@ public class AnalyzeUnitTests
         }
 
         AnalyzedInfo expected = new() { FoundDirs = 4, FoundFiles = 7, FoundSymlinks = null, FileInfo = hash_map, TotalBytes = 432 };
-        Assert.Equal(res, expected);
+        Assert.Equal(expected, res);
     }
 
     [Fact]
@@ -126,15 +131,15 @@ public class AnalyzeUnitTests
         sym.SetDirSymlinks(1);
         sym.SetFileSymlinks(1);
         var expected = new AnalyzedInfo() { FoundDirs = 6, FoundFiles = 8, FileInfo = null, FoundSymlinks = sym, TotalBytes = 432 };
-        Assert.Equal(res, expected);
+        Assert.Equal(expected, res);
     }
 
     [Fact]
     public void AnalyzeIgnoreEntries()
     {
-        var str1 = TEST_DIR + "folder2/folder3";
+        var str1 = TEST_DIR + "folder2" + Path.DirectorySeparatorChar + "folder3";
         var str2 = TEST_DIR + "file4.zip";
-        var format = "{}, {}";
+        var format = "{0}, {1}";
         var ignore_entries = String.Format(format, str1, str2);
         Args test_args = new(TEST_DIR,
             false,//no_recurse
@@ -150,15 +155,15 @@ public class AnalyzeUnitTests
            );
         var res = A.Analyze(test_args);
         var expected = new AnalyzedInfo() { FoundDirs = 2, FoundFiles = 5, FoundSymlinks = null, FileInfo = null, TotalBytes = 235 };
-        Assert.Equal(res, expected);
+        Assert.Equal(expected, res);
     }
 
     [Fact]
     public void AnalyzeIgnoreEntriesFileInfo()
     {
-        var str1 = TEST_DIR + "folder2/folder3";
+        var str1 = TEST_DIR + "folder2" + Path.DirectorySeparatorChar + "folder3";
         var str2 = TEST_DIR + "file4.zip";
-        var format = "{}, {}";
+        var format = "{0}, {1}";
         var ignore_entries = String.Format(format, str1, str2);
         Args test_args = new(TEST_DIR,
             false,//no_recurse
@@ -190,7 +195,7 @@ public class AnalyzeUnitTests
         //folder2/file6.txt
         hash_map[txt].NumFiles += 1;
         hash_map[txt].SizeInBytes += 7;
-        hash_map[txt].SmallestFile = new FileTypeInfoRecords(TEST_DIR + "folder2/file6.txt", 7);
+        hash_map[txt].SmallestFile = new FileTypeInfoRecords(TEST_DIR + "folder2" + Path.DirectorySeparatorChar + "file6.txt", 7);
 
         hash_map.Add(rtf, new FileTypeInfo(1, new FileTypeInfoRecords(TEST_DIR + "file3.rtf", 196), new FileTypeInfoRecords(TEST_DIR + "file3.rtf", 196), 196, null, null));//file3.rtf
 
@@ -201,13 +206,13 @@ public class AnalyzeUnitTests
         }
 
         var expected = new AnalyzedInfo() { FoundDirs = 2, FoundFiles = 5, FoundSymlinks = null, FileInfo = hash_map, TotalBytes = 235 };
-        Assert.Equal(res, expected);
+        Assert.Equal(expected, res);
     }
 
     [Fact]
     public void AnalyzeSymlinkLoop()
     {
-        var test_dir = "../test_symlink_loop";
+        var test_dir = ROOT_DIR + ".." + Path.DirectorySeparatorChar + "test_symlink_loop";
         Args test_args = new(test_dir,
             false,//no_recurse
            false,//file_info
@@ -224,7 +229,7 @@ public class AnalyzeUnitTests
         var sym = new SymlinkInfo();
         sym.SetDirSymlinks(2);
         var expected = new AnalyzedInfo() { FoundDirs = 2, FoundFiles = 2, FoundSymlinks = sym, FileInfo = null, TotalBytes = 21 };
-        Assert.Equal(res, expected);
+        Assert.Equal(expected, res);
     }
 
     [Fact]
@@ -244,7 +249,7 @@ public class AnalyzeUnitTests
            );
         var res = A.Analyze(test_args);
         var expected = new AnalyzedInfo() { FoundDirs = 6, FoundFiles = 8, FoundSymlinks = null, FileInfo = null, TotalBytes = 432 };
-        Assert.Equal(res, expected);
+        Assert.Equal(expected, res);
     }
 
     public static (uint, ulong) GetTotalFilesAndBytesFromMap(Dictionary<FileExtension, FileTypeInfo> map)

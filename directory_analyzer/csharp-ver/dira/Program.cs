@@ -10,11 +10,19 @@ namespace dira
         {
             //TODO: Start timer
             var parser = new Parser(with => with.EnableDashDash = true);
-            var result = parser.ParseArguments<Args>(args).WithParsed<Args>(args => { 
-                var info = A.Analyze(args);
-                var o = B.Output(args,info);
-                System.Console.WriteLine(o);
-                
+            var result = parser.ParseArguments<Args>(args).WithParsed<Args>(args =>
+            {
+                try
+                {
+                    var o = B.Output(args, A.Analyze(args));
+                    Console.WriteLine(o);
+                }
+                catch (Exception e)
+                {
+                    Console.SetOut(Console.Error);
+                    Console.WriteLine("{0}", e);
+                }
+
             }).WithNotParsed<Args>(e => { });
         }
 

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace dira.types
 {
 
@@ -46,6 +48,48 @@ namespace dira.types
                 }
             }
         }
+
+        public override bool Equals(object? obj)
+        {
+            if (obj == null || obj is not AnalyzedInfo)
+            {
+                return false;
+            }
+            var other = (AnalyzedInfo)obj;
+            bool dicts = true;
+            if (FileInfo != null && other.FileInfo != null)
+            {
+                dicts = other.FileInfo.All(kv =>
+                {
+                    if (FileInfo.TryGetValue(kv.Key, out FileTypeInfo? value))
+                    {
+                        return value == kv.Value;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                });
+            }
+            bool syms = this.FoundSymlinks == other.FoundSymlinks;
+
+            return this.FoundDirs == other.FoundDirs && this.FoundFiles == other.FoundFiles && this.TotalBytes == other.TotalBytes && syms && dicts;
+        }
+
+        public static bool operator ==(AnalyzedInfo left, AnalyzedInfo right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(AnalyzedInfo left, AnalyzedInfo right)
+        {
+            return !(left == right);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(FoundDirs, FoundFiles, FoundSymlinks, FileInfo, TotalBytes);
+        }
     }
 
     public readonly struct FileExtension(string ext)
@@ -83,6 +127,30 @@ namespace dira.types
             PercentOfTotalFiles = (float)NumFiles / (float)total_files;
             PercentOfTotalSize = (float)SizeInBytes / (float)total_bytes;
         }
+
+        public override bool Equals(object? obj)
+        {
+            if (obj != null && obj is FileTypeInfo other)
+            {
+                return this.NumFiles == other.NumFiles && this.LargestFile == other.LargestFile && this.SmallestFile == other.SmallestFile && this.SizeInBytes == other.SizeInBytes && this.PercentOfTotalFiles == other.PercentOfTotalFiles && this.PercentOfTotalSize == other.PercentOfTotalSize;
+            }
+            return false;
+        }
+
+        public static bool operator ==(FileTypeInfo left, FileTypeInfo right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(FileTypeInfo left, FileTypeInfo right)
+        {
+            return !(left == right);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(NumFiles, LargestFile, SmallestFile, SizeInBytes, PercentOfTotalFiles, PercentOfTotalSize);
+        }
     }
 
     /// <summary>
@@ -99,6 +167,31 @@ namespace dira.types
         /// The size of the file
         /// </summary>
         public ulong Size { get; } = size;
+
+        public override bool Equals([NotNullWhen(true)] object? obj)
+        {
+            if (obj != null && obj is FileTypeInfoRecords other)
+            {
+
+                return this.Path == other.Path && this.Size == other.Size;
+            }
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(Path, Size);
+        }
+
+        public static bool operator ==(FileTypeInfoRecords left, FileTypeInfoRecords right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(FileTypeInfoRecords left, FileTypeInfoRecords right)
+        {
+            return !(left == right);
+        }
     }
 
     public struct SymlinkInfo
@@ -144,6 +237,30 @@ namespace dira.types
         {
             dirSymlinks = value;
             FoundSymlinks = fileSymlinks + dirSymlinks;
+        }
+
+        public override readonly bool Equals([NotNullWhen(true)] object? obj)
+        {
+            if (obj != null && obj is SymlinkInfo other)
+            {
+                return this.dirSymlinks == other.dirSymlinks && this.fileSymlinks == other.fileSymlinks && this.FoundSymlinks == other.FoundSymlinks;
+            }
+            return false;
+        }
+
+        public override readonly int GetHashCode()
+        {
+            return HashCode.Combine(dirSymlinks, fileSymlinks, FoundSymlinks);
+        }
+
+        public static bool operator ==(SymlinkInfo left, SymlinkInfo right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(SymlinkInfo left, SymlinkInfo right)
+        {
+            return !(left == right);
         }
     }
 }

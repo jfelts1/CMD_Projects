@@ -10,6 +10,7 @@ namespace dira
         {
             if (args.ExportXLSX != null)
             {
+                throw new NotImplementedException();
                 //TODO: Write to xlsx file
 
                 string format = "Info saved to {}";
