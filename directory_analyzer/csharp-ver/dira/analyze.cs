@@ -68,13 +68,16 @@ namespace dira
 
                 if (timer != null)
                 {
-                    var found_dirs = res.FoundDirs;
-                    var found_files = res.FoundFiles;
-                    timer.Elapsed += (object? sender, ElapsedEventArgs e) => PrintUpdate(sender, e, found_dirs, found_files);
+                    if ((ulong)timer.Elapsed.Seconds > args.Updates)
+                    {
+                        timer.Reset();
+                        PrintUpdate(res.FoundDirs, res.FoundFiles);
+                        timer.Start();
+                    }
                 }
             }
 
-            static void PrintUpdate(object? source, ElapsedEventArgs e, uint found_dirs, uint found_files)
+            static void PrintUpdate(uint found_dirs, uint found_files)
             {
                 Console.WriteLine("Update: {0} found dirs, {1} found files", found_dirs, found_files);
             }
@@ -246,15 +249,12 @@ namespace dira
             return ignore_these;
         }
 
-        private static System.Timers.Timer? SetUpTimer(Args args)
+        private static Stopwatch? SetUpTimer(Args args)
         {
             if (args.Updates != null)
             {
-                var timer = new System.Timers.Timer((double)args.Updates * 1000.0)
-                {
-                    Enabled = true,
-                    AutoReset = true
-                };
+                var timer = new Stopwatch();
+                timer.Start();
                 return timer;
             }
 
