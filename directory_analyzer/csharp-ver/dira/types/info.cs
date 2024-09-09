@@ -194,11 +194,19 @@ namespace dira.types
             if (PercentOfTotalFiles != null)
             {
                 per_tot_files = new PercentOfTotalFiles(string.Format("{0:.##}", PercentOfTotalFiles * 100.0));
+                if (per_tot_files.Percent == "")
+                {
+                    per_tot_files = new PercentOfTotalFiles("< 0.01");
+                }
             }
             var per_tot_size = new PercentOfTotalSize("N/A");
             if (PercentOfTotalSize != null)
             {
                 per_tot_size = new PercentOfTotalSize(string.Format("{0:.##}", PercentOfTotalSize * 100.0));
+                if (per_tot_size.Percent == "")
+                {
+                    per_tot_size = new PercentOfTotalSize("< 0.01");
+                }
             }
             return (per_tot_files, per_tot_size);
         }
