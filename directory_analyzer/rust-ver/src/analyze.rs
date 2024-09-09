@@ -4,7 +4,7 @@ use std::{
     path::{self, PathBuf},
 };
 
-use crate::{AnalyzedInfo, Args, FileTypeInfo, FileTypeInfoRecords, SymlinkInfo, Timer};
+use crate::{AnalyzedInfo, Args, FastPath, FileTypeInfo, FileTypeInfoRecords, SymlinkInfo, Timer};
 use anyhow::Result;
 
 pub fn analyze(args: &Args) -> Result<AnalyzedInfo> {
@@ -41,21 +41,21 @@ fn search_dirs(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
                     continue;
                 }
             }
-            if metadata.is_dir() && !found_items.contains(&path) {
+            if metadata.is_dir() && !found_items.contains(&FastPath::new(&path)) {
                 handle_dirs(args, &mut dirs_to_analyze, &entry, analyed_info)?;
                 //No need to track found items since there is no risk of loops or double counting
                 if args.follow_symlinks() {
-                    found_items.push(path);
+                    found_items.push(FastPath::new(&path));
                 }
-            } else if metadata.is_file() && !found_items.contains(&path) {
+            } else if metadata.is_file() && !found_items.contains(&FastPath::new(&path)) {
                 handle_files(args, analyed_info, &entry, &metadata)?;
                 //No need to track found items since there is no risk of loops or double counting
                 if args.follow_symlinks() {
-                    found_items.push(path);
+                    found_items.push(FastPath::new(&path));
                 }
             } else if (args.count_symlinks() || args.follow_symlinks())
                 && metadata.is_symlink()
-                && !found_items.contains(&path)
+                && !found_items.contains(&FastPath::new(&path))
             {
                 handle_symlinks(
                     entry,
@@ -153,7 +153,7 @@ fn search_dirs(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
     ///Traverses and counts symlinks and if the target is not already counted counts it
     fn handle_symlinks(
         entry: DirEntry,
-        found_items: &mut Vec<PathBuf>,
+        found_items: &mut Vec<FastPath>,
         args: &Args,
         dirs_to_analyze: &mut Vec<PathBuf>,
         analyed_info: &mut AnalyzedInfo,
@@ -163,14 +163,14 @@ fn search_dirs(args: &Args, analyed_info: &mut AnalyzedInfo) -> Result<()> {
         if args.follow_symlinks() {
             //don't look at entries that have been seen before
             //prevents following symlink loops and counting entries multiple times
-            if !found_items.contains(&path) {
+            if !found_items.contains(&FastPath::new(&path)) {
                 if metadata.is_dir() {
                     handle_dirs(args, dirs_to_analyze, &entry, analyed_info)?;
                 } else if metadata.is_file() {
                     handle_files(args, analyed_info, &entry, &metadata)?;
                 }
 
-                found_items.push(path);
+                found_items.push(FastPath::new(&path));
             }
         }
 

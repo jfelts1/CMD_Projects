@@ -19,9 +19,6 @@ pub struct Args {
     file_info: bool,
 
     ///Follow symlinks as if they were a normal object.
-    ///
-    /// NOTE: Due to the need to track found files and directories to prevent counting the same entry multiple times, this has a noticable performance impact.
-    /// Due to this unless you need to actually follow symlinks it is recomended to not use this flag.
     #[arg(short = 's', long, default_value_t = false)]
     follow_symlinks: bool,
 
@@ -100,9 +97,6 @@ impl Args {
     }
 
     ///Follow symlinks as if they were a normal object
-    ///
-    /// NOTE: Due to the need to track found files and directories to prevent counting the same entry multiple times, this has a noticable performance impact.
-    /// Due to this unless you need to actually follow symlinks it is reccomended to not use this flag.
     pub fn follow_symlinks(&self) -> bool {
         self.follow_symlinks
     }

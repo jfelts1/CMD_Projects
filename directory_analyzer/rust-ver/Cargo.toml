@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.86"
-clap = { version = "4.5.16", features = ["derive"] }
-serde = { version = "1.0.208", features = ["derive"] }
-rust_xlsxwriter = "0.73.0"
+anyhow = "1.0.87"
+clap = { version = "4.5.17", features = ["derive"] }
+serde = { version = "1.0.210", features = ["derive"] }
+rust_xlsxwriter = "0.75.0"
 file-id = "0.2.1"
 
-[profile.release]
-debug = true
+# [profile.release]
+# debug = true
