@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Timers;
 using dira.types;
 
 namespace dira
@@ -34,7 +35,7 @@ namespace dira
                     var info = new FileInfo(path);
                     if (ignore_these != null)
                     {
-                        if (ignore_these.Any(p => Path.GetFullPath(p) == path))
+                        if (ignore_these.Any(p => Path.GetFullPath(p).TrimEnd(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar) == path))
                         {
                             continue;
                         }
@@ -65,9 +66,18 @@ namespace dira
 
                 }
 
-                //TODO: Timer stuff
+                if (timer != null)
+                {
+                    var found_dirs = res.FoundDirs;
+                    var found_files = res.FoundFiles;
+                    timer.Elapsed += (object? sender, ElapsedEventArgs e) => PrintUpdate(sender, e, found_dirs, found_files);
+                }
             }
 
+            static void PrintUpdate(object? source, ElapsedEventArgs e, uint found_dirs, uint found_files)
+            {
+                Console.WriteLine("Update: {0} found dirs, {1} found files", found_dirs, found_files);
+            }
             static void HandleDirs(Args args, ref Stack<string> dirs_to_analyze, string entry, ref AnalyzedInfo analyzed_info)
             {
                 HandleArgs(args, ref dirs_to_analyze, entry);
@@ -83,7 +93,7 @@ namespace dira
                     {
                         if (args.FullPath)
                         {
-                            Console.WriteLine("dir: {0}", Path.GetFullPath(entry));
+                            Console.WriteLine("dir: {0}", Path.GetFullPath(entry).TrimEnd(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar));
                         }
                         else
                         {
@@ -200,7 +210,7 @@ namespace dira
             string? path = null;
             if (args.FullPath)
             {
-                path = Path.GetFullPath(entry);
+                path = Path.GetFullPath(entry).TrimEnd(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
             }
             else
             {
@@ -240,7 +250,12 @@ namespace dira
         {
             if (args.Updates != null)
             {
-                return new System.Timers.Timer((double)args.Updates * 1000.0);
+                var timer = new System.Timers.Timer((double)args.Updates * 1000.0)
+                {
+                    Enabled = true,
+                    AutoReset = true
+                };
+                return timer;
             }
 
             return null;

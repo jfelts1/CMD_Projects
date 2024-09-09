@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 
 namespace dira.types
 {
@@ -90,11 +91,36 @@ namespace dira.types
         {
             return HashCode.Combine(FoundDirs, FoundFiles, FoundSymlinks, FileInfo, TotalBytes);
         }
+
+        public override string ToString()
+        {
+            string symlinks_str = "";
+            if (FoundSymlinks != null)
+            {
+                symlinks_str = String.Format("\n{0}", FoundSymlinks.ToString());
+            }
+
+            string info_str = "";
+            if (FileInfo != null)
+            {
+                foreach ((var file_ext, var ft_info) in FileInfo)
+                {
+                    info_str += String.Format("\nFile extension:{0}{1}", file_ext.ToString(), ft_info.ToString());
+                }
+            }
+            var str = String.Format("Found directories:{0}\nFound files:{1}\nTotal bytes:{2} bytes{3}\n{4}", FoundDirs, FoundFiles, TotalBytes, symlinks_str, info_str);
+            return str;
+        }
     }
 
     public readonly struct FileExtension(string ext)
     {
         public string Ext { get; } = ext;
+
+        public override string ToString()
+        {
+            return Ext.ToString();
+        }
     }
 
     public class FileTypeInfo(uint num_files, FileTypeInfoRecords largest_file, FileTypeInfoRecords smallest_file, ulong size_in_bytes, float? percent_of_total_files, float? percent_of_total_size)
@@ -151,8 +177,54 @@ namespace dira.types
         {
             return HashCode.Combine(NumFiles, LargestFile, SmallestFile, SizeInBytes, PercentOfTotalFiles, PercentOfTotalSize);
         }
+
+        public override string ToString()
+        {
+            (var per_tot_files, var per_tot_size) = PercentagesInString();
+            var per_tot_files_str = string.Format("  % of total files: {0}\n", per_tot_files);
+            var per_tot_size_str = string.Format("\n  % of total size: {0}", per_tot_size);
+
+
+            return string.Format("\n  Number of files:{0}\n{1}  Largest file: {2}\n  Smallest file: {3}\n  Size in bytes for this type: {4}{5}", NumFiles, per_tot_files_str, LargestFile, SmallestFile, SizeInBytes, per_tot_size_str);
+        }
+
+        public (PercentOfTotalFiles, PercentOfTotalSize) PercentagesInString()
+        {
+            var per_tot_files = new PercentOfTotalFiles("N/A");
+            if (PercentOfTotalFiles != null)
+            {
+                per_tot_files = new PercentOfTotalFiles(string.Format("{0:.##}", PercentOfTotalFiles * 100.0));
+            }
+            var per_tot_size = new PercentOfTotalSize("N/A");
+            if (PercentOfTotalSize != null)
+            {
+                per_tot_size = new PercentOfTotalSize(string.Format("{0:.##}", PercentOfTotalSize * 100.0));
+            }
+            return (per_tot_files, per_tot_size);
+        }
+
+
     }
 
+    public readonly struct PercentOfTotalFiles(string percent)
+    {
+        public string Percent { get; } = percent;
+
+        public override string ToString()
+        {
+            return Percent;
+        }
+    }
+
+    public readonly struct PercentOfTotalSize(string percent)
+    {
+        public string Percent { get; } = percent;
+
+        public override string ToString()
+        {
+            return Percent;
+        }
+    }
     /// <summary>
     /// This is for holding info about specific notable files
     /// </summary>
@@ -191,6 +263,11 @@ namespace dira.types
         public static bool operator !=(FileTypeInfoRecords left, FileTypeInfoRecords right)
         {
             return !(left == right);
+        }
+
+        public override string ToString()
+        {
+            return string.Format("\n    Path:{0}\n    Size: {1}", Path, Size);
         }
     }
 
@@ -261,6 +338,11 @@ namespace dira.types
         public static bool operator !=(SymlinkInfo left, SymlinkInfo right)
         {
             return !(left == right);
+        }
+
+        public override readonly string ToString()
+        {
+            return string.Format("\nFound symbolic links:{0}\nSymlinks that point to files: {1}\nSymlinks that point to directories: {2}", FoundSymlinks, fileSymlinks, dirSymlinks);
         }
     }
 }
