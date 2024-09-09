@@ -297,11 +297,25 @@ impl FileTypeInfo {
 
     pub fn percentages_in_string(&self) -> (PercentageOfFiles, PercentageOfSize) {
         let per_tot_files = match self.percent_of_total_files {
-            Some(per) => format!("{:.2}", per * 100.0),
+            Some(per) => {
+                let tmp = format!("{:.2}", per * 100.0);
+                if tmp == "0.00" {
+                    "< 0.01".to_string()
+                } else {
+                    tmp
+                }
+            }
             None => "N/A\n".to_string(),
         };
         let per_tot_size = match self.percent_of_total_size {
-            Some(per) => format!("{:.2}", per * 100.0),
+            Some(per) => {
+                let tmp = format!("{:.2}", per * 100.0);
+                if tmp == "0.00" {
+                    "< 0.01".to_string()
+                } else {
+                    tmp
+                }
+            }
             None => "N/A".to_string(),
         };
         (per_tot_files, per_tot_size)

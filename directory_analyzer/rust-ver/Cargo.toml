@@ -9,3 +9,6 @@ clap = { version = "4.5.16", features = ["derive"] }
 serde = { version = "1.0.208", features = ["derive"] }
 rust_xlsxwriter = "0.73.0"
 file-id = "0.2.1"
+
+[profile.release]
+debug = true
