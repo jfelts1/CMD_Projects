@@ -19,6 +19,8 @@ pub struct Args {
     file_info: bool,
 
     ///Follow symlinks as if they were a normal object.
+    /// 
+    /// PERF NOTE: For very large directories(>100,000 files or directories) this can be slow to process.
     #[arg(short = 's', long, default_value_t = false)]
     follow_symlinks: bool,
 
